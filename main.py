@@ -291,11 +291,11 @@ def main(rank, cfg):
 
         scheduler = CosineAnnealingWarmupRestarts(optim,
                                           first_cycle_steps=300,
-                                          cycle_mult=1.0,
-                                          max_lr=0.005,
-                                          min_lr=0.0005,
-                                          warmup_steps=70,
-                                          gamma=0.5)
+                                          cycle_mult=2.0,
+                                          max_lr=0.001,
+                                          min_lr=0.0001,
+                                          warmup_steps=100,
+                                          gamma=0.25)
 
         model = DistributedDataParallel(model)
         train(
