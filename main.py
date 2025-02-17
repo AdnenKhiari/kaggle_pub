@@ -188,15 +188,18 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,loss
         total_loss = 0
         token_th = 0
         for batch_idx, (train_x, train_y) in enumerate(train_loader):
-            train_x = train_x.to(device)  # (B,T)
-            train_y = train_y.to(device)  # (B,T)
-    
-            pred_x = model(train_x)  # (B,T,VOCAB_SIZE)
-            loss = loss_fn(pred_x.view(-1, pred_x.size(-1)), train_y.view(-1))   # Flatten for CE loss
-            total_loss += loss.item() 
-            token_th = token_th + train_x.size(0) * train_x.size(1)
+            with torch.amp.autocast(device_type='cuda',dtype=torch.float16):
+                train_x = train_x.to(device)  # (B,T)
+                train_y = train_y.to(device)  # (B,T)
+        
+                pred_x = model(train_x)  # (B,T,VOCAB_SIZE)
+                loss = loss_fn(pred_x.view(-1, pred_x.size(-1)), train_y.view(-1))   # Flatten for CE loss
+                total_loss += loss.item() 
+                token_th = token_th + train_x.size(0) * train_x.size(1)
 
-            loss = loss / grad_acc_steps 
+                loss = loss / grad_acc_steps 
+            
+            # All Reduce
             loss.backward()
 
             # Gradient Accumulation
