@@ -177,20 +177,6 @@ class GPT(torch.nn.Module):
         return x
     
 WORLD_SIZE = torch.cuda.device_count()
-WORLD_SIZE
-
-
-CONTEXT_SIZE = 256
-EMBED_DIM = 256
-NUM_HEADS = 8
-NUM_LAYERS = 4
-BATCH_SIZE = 700
-GRAD_ACCUMULATION_BATCH_SIZE = 2048
-NUM_EPOCHS = 1500
-LR = 0.001
-
-
-
 
 def train(model, epoch, train_loader,optim,loss_fn,device):
     model.train()
@@ -265,24 +251,39 @@ def ddp_setup(rank,world_size):
 
 
 torch.set_float32_matmul_precision('high')
-def main(rank,world_size,epoch):
+def main(rank,cfg):
     try:
-        ddp_setup(rank,world_size)
+        ddp_setup(rank,cfg.WORLD_SIZE)
         DEVICE = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
         # model = torch.compile(model)
         tokenizer = Tokenizer(train_set)
-        train_data = DataShak(tokenizer,train_set,CONTEXT_SIZE)
-        train_loader = DataLoader(train_data,batch_size=BATCH_SIZE,collate_fn=collate_fn,shuffle=False,sampler=DistributedSampler(train_data))
+        train_data = DataShak(tokenizer,train_set,cfg.CONTEXT_SIZE)
+        train_loader = DataLoader(train_data,batch_size=cfg.WORKER_BATCH_SIZE,collate_fn=collate_fn,shuffle=False,sampler=DistributedSampler(train_data))
         loss_fn = torch.nn.CrossEntropyLoss().to(DEVICE)
-        model = GPT(tokenizer.vocab_size(),CONTEXT_SIZE,EMBED_DIM,EMBED_DIM,NUM_HEADS,NUM_LAYERS).to(DEVICE)
-        optim = torch.optim.Adam(model.parameters(),lr=LR)  # Instantiate optimizer with model parameters
+        model = GPT(tokenizer.vocab_size(),cfg.CONTEXT_SIZE,cfg.EMBED_DIM,cfg.EMBED_DIM,cfg.NUM_HEADS,cfg.NUM_LAYERS).to(DEVICE)
+        optim = torch.optim.Adam(model.parameters(),lr=cfg.LR)  # Instantiate optimizer with model parameters
 
         model = DistributedDataParallel(model)
-        train(model,epoch,train_loader,optim,loss_fn,DEVICE)
-        gen = AutoRegressiveGenerator(tokenizer,model,CONTEXT_SIZE,DEVICE)
+        train(model,cfg.EPOCH,train_loader,optim,loss_fn,DEVICE)
+        gen = AutoRegressiveGenerator(tokenizer,model,cfg.CONTEXT_SIZE,DEVICE)
         return gen.generate('As shall with either part',200,0.05)
     finally:
         destroy_process_group()
 
+
 if __name__ == '__main__':
-    mp.spawn(main,args=[WORLD_SIZE,1],nprocs=WORLD_SIZE)
+    config = {
+        "WORLD_SIZE": WORLD_SIZE,
+        "CONTEXT_SIZE": 256,
+        "EMBED_DIM": 256,
+        "NUM_HEADS": 8,
+        "EPOCH": 2,
+        "NUM_LAYERS": 4,
+        "TOTAL_BATCH_SIZE": 2048,
+        "WORKER_BATCH_SIZE": 256,
+        "WORKER_GRAD_ACCUMULATION_BATCH_SIZE": 2048,
+        "NUM_EPOCHS": 1500,
+        "LR": 0.001
+    }
+
+    mp.spawn(main,args=[config],nprocs=WORLD_SIZE)
