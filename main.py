@@ -1,0 +1,288 @@
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import time
+
+train_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/train.csv').loc[0,'text']
+valid_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/validation.csv').loc[0,'text']
+test_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/test.csv').loc[0,'text']
+
+class Tokenizer:
+    def __init__(self,text):
+        self.vocab = list(set(self.tokenize(text)))
+        self.encod_dict = { item:index  for index,item in enumerate(self.vocab)  }        
+        self.decode_dict = { index:item  for index,item in enumerate(self.vocab)  }
+    def vocab_size(self):
+        return len(self.vocab)
+    # def tokenize(self,text):
+    #     t = text.split(' ')
+    #     res = []
+    #     for item in t:
+    #         res.append(item)
+    #         res.append(' ')
+    #     return res
+    def tokenize(self, text):
+        return [text[i:i+1] for i in range(len(text))]
+
+    def encode(self,text):
+        return [self.encod_dict[item] for item in self.tokenize(text)]
+    def decode(self,tokens):
+        return ''.join([self.decode_dict[item] for item in tokens])
+    
+
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+import torch
+class DataShak(Dataset):
+    def __init__(self,tokenizer,text,context_size):
+        self.text = tokenizer.encode(text)
+        self.context_size = context_size
+    def __len__(self):
+        return len(self.text) // self.context_size
+    def __getitem__(self,idx):
+        next_idx = idx+1
+        x = self.text[idx*self.context_size:next_idx*self.context_size]
+        y = self.text[idx*self.context_size+1:next_idx*self.context_size+1]
+        if len(y) < self.context_size:
+            y = self.text[-self.context_size+1:] + [' ']
+        if len(x) < self.context_size:
+            x = self.text[-self.context_size:]
+        return x,y
+    
+def collate_fn(batch):
+    xs = []
+    ys = []
+    for x,y in batch:
+        xs.append(torch.tensor(x))
+        ys.append(torch.tensor(y))
+    return torch.stack(xs),torch.stack(ys)
+        
+
+# class SimpleAverage(torch.nn.Module):
+#     def __init__(self,embed_dim,head_dim):
+#         super().__init__()
+#         self.value_projection = torch.nn.Sequential(torch.nn.Linear(embed_dim,head_dim))
+#         # self.key_projection = torch.nn.Sequential(torch.nn.Linear(embed_dim,head_dim))
+#         # self.queries_projection = torch.nn.Sequential(torch.nn.Linear(embed_dim,head_dim))
+#     def forward(self,x):
+#         tria = torch.tril(torch.ones(x.size(1),x.size(1)))
+#         avg_matrix = torch.zeros(x.size(1),x.size(1))
+#         avg_matrix = torch.nn.functional.softmax(avg_matrix.masked_fill(tria == 0,float('-inf')),-1).to(DEVICE)
+
+#         value = self.value_projection(x)
+#         mixed_value = avg_matrix @ value 
+        
+#         return mixed_value
+class CausalSelfAttention(torch.nn.Module):
+    def __init__(self,embed_dim,head_dim):
+        super().__init__()
+        self.value_projection = torch.nn.Linear(embed_dim,head_dim)
+        self.key_projection = torch.nn.Linear(embed_dim,head_dim)
+        self.queries_projection = torch.nn.Linear(embed_dim,head_dim)
+        self.norm = head_dim**0.5
+    def forward(self,x):
+        tria = torch.tril(torch.ones(x.size(1),x.size(1))).to(DEVICE)
+        queries = self.queries_projection(x)
+        keys = self.key_projection(x)
+        att_matrix = queries @ keys.transpose(-2,-1) / self.norm
+        att_matrix = torch.nn.functional.softmax(att_matrix.masked_fill(tria == 0,float('-inf')),-1)
+
+        value = self.value_projection(x)
+        mixed_value = att_matrix @ value
+        
+        return mixed_value
+        
+
+class MultiHeadedCausalSelfFlashAttention(torch.nn.Module):
+    def __init__(self,embed_dim,head_dim,num_heads):
+        super().__init__()
+        assert head_dim % num_heads == 0
+        self.num_heads = num_heads
+        self.head_dim = head_dim
+        self.value_projection = torch.nn.Linear(embed_dim,head_dim) 
+        self.key_projection = torch.nn.Linear(embed_dim,head_dim)
+        self.queries_projection = torch.nn.Linear(embed_dim,head_dim)
+        self.norm = (head_dim//num_heads)**0.5
+    def forward(self,x):
+        queries = self.queries_projection(x)  # ( B , C , D * N) N = Number of heads , C = Context Length , D = Head Embed Dim
+        keys = self.key_projection(x) # ( B , C , D * N)
+        value = self.value_projection(x) # ( B , C , D * N)
+
+        queries = queries.reshape(x.size(0),x.size(1),self.num_heads,self.head_dim // self.num_heads).transpose(-3,-2) # ( B , N, C , D )
+        keys = keys.reshape(x.size(0),x.size(1),self.num_heads,self.head_dim // self.num_heads).transpose(-3,-2) # ( B , N, C , D )
+        value = value.reshape(x.size(0),x.size(1),self.num_heads,self.head_dim // self.num_heads).transpose(-3,-2) # ( B , N, C , D )
+        
+
+        mixed_value = torch.nn.functional.scaled_dot_product_attention(queries,keys,value,is_causal=True) # ( B , N, C , D )
+        mixed_value = mixed_value.transpose(-3,-2).reshape((x.size(0),x.size(1),self.head_dim))
+        
+        return mixed_value
+        
+class GPTMLP(torch.nn.Module):
+    def __init__(self,embed_dim):
+        super().__init__()
+        self.ln_1 = torch.nn.LayerNorm(embed_dim)
+        self.fc = torch.nn.Linear(embed_dim,4*embed_dim)
+        self.actv = torch.nn.GELU()
+        self.proj = torch.nn.Linear(4*embed_dim,embed_dim)
+    def forward(self,x):
+        x = self.actv(self.fc(self.ln_1(x)))
+        x = self.proj(x)
+        return x
+
+class TransformerBlock(torch.nn.Module):
+    def __init__(self,embed_dim,head_dim,num_heads):
+        super().__init__()
+        self.ln_1 = torch.nn.LayerNorm(embed_dim)
+        self.attn = MultiHeadedCausalSelfFlashAttention(embed_dim,head_dim,num_heads)
+        self.proj = torch.nn.Linear(head_dim,embed_dim)
+        self.mlp = GPTMLP(embed_dim)
+    def forward(self,x):
+        x = x + self.proj(self.attn(self.ln_1(x)))
+        x = x + self.mlp(x)
+        return x
+    
+
+class GPT(torch.nn.Module):
+    def __init__(self,vocab_size,context_size,embed_dim,head_dim,n_heads,n_layers):
+        super().__init__()
+
+        self.transformer = torch.nn.ModuleDict(dict(
+            wte = torch.nn.Embedding(vocab_size,embed_dim),
+            wpe = torch.nn.Embedding(context_size,embed_dim),
+            drop = torch.nn.Dropout(0.1),
+            h = torch.nn.ModuleList(
+                [TransformerBlock(embed_dim,head_dim,n_heads) for _ in range(n_layers)]
+            )
+        ))
+
+        self.lm_head = torch.nn.Linear(embed_dim,vocab_size)
+        self.register_buffer('wpe_sequence',torch.arange(0,context_size))
+
+        self.lm_head.weight = self.transformer.wte.weight
+    def forward(self,x):
+        x = self.transformer.wte(x)
+        x = x + self.transformer.wpe(self.wpe_sequence[:x.size(1)])
+        x = self.transformer.drop(x)
+
+        # Thinking Phase
+        for block in self.transformer.h:
+            x = block(x)
+
+        #Output
+        x = self.lm_head(x)
+        return x
+    
+WORLD_SIZE = torch.cuda.device_count()
+WORLD_SIZE
+
+
+CONTEXT_SIZE = 256
+EMBED_DIM = 256
+NUM_HEADS = 8
+NUM_LAYERS = 4
+BATCH_SIZE = 700
+GRAD_ACCUMULATION_BATCH_SIZE = 2048
+NUM_EPOCHS = 1500
+LR = 0.001
+
+
+
+
+def train(model, epoch, train_loader,optim,loss_fn,device):
+    model.train()
+
+    grad_acc_steps = GRAD_ACCUMULATION_BATCH_SIZE / BATCH_SIZE
+    
+    for e in range(epoch):
+        start_time = time.perf_counter()
+
+        total_loss = 0
+        token_th = 0
+        for batch_idx, (train_x, train_y) in enumerate(train_loader):
+            train_x = train_x.to(device)  # (B,T)
+            train_y = train_y.to(device)  # (B,T)
+    
+            pred_x = model(train_x)  # (B,T,VOCAB_SIZE)
+            loss = loss_fn(pred_x.view(-1, pred_x.size(-1)), train_y.view(-1))   # Flatten for CE loss
+            total_loss += loss.item() 
+            token_th = token_th + train_x.size(0) * train_x.size(1)
+
+            loss = loss / grad_acc_steps 
+            loss.backward()
+
+            # Gradient Accumulation
+            if (batch_idx) % grad_acc_steps == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
+                optim.step()
+                optim.zero_grad()  # Clear previous gradients
+            # if batch_idx % 10 == 0:
+            #     print(f"Batch {batch_idx + 1}/{len(train_loader)} - Loss: {loss.item():.4f}")
+    
+        avg_loss = total_loss / len(train_loader)
+        torch.cuda.synchronize()
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+
+        token_th = token_th / execution_time
+        print(f"{device} Epoch {e} completed. Average Loss: {avg_loss:.4f} | Execution Time: {execution_time: .5f} s | Tokens Throughput : {token_th: .5f} t/s")
+
+
+class AutoRegressiveGenerator():
+    def __init__(self,tokenizer,model,context_size,device):
+        self.tokenizer = tokenizer
+        self.model = model
+        self.context_size = context_size
+        self.device=device
+    def generate(self,inp,max_tokens,temperature,top_k=20):
+        encoded = torch.tensor(self.tokenizer.encode(inp),device=self.device).view(1,-1) # (B,T)
+        x = encoded
+        result = x
+        self.model.eval()
+        with torch.no_grad():
+            for _ in range(max_tokens):
+                x = x[:,-self.context_size:]
+                next_token_distribution =  torch.nn.functional.softmax(self.model(x)[:,-1,:] / temperature,-1)
+                # next_token = next_token_distribution.argmax(1).view(-1,1) # (B,1)
+                next_token = torch.multinomial(torch.topk(next_token_distribution,top_k,dim=1).values,1)
+                x = torch.cat((x,next_token),1) # (B,T+1)
+                result = torch.cat((result,next_token),1) # (B,T+1)
+            return self.tokenizer.decode(result.tolist()[0])
+        
+
+from torch.nn.parallel import DistributedDataParallel
+from torch.distributed import init_process_group,destroy_process_group
+from torch.utils.data.distributed import DistributedSampler
+import torch.multiprocessing as mp
+import os
+def ddp_setup(rank,world_size):
+    os.environ['MASTER_ADDR']='localhost'
+    os.environ['MASTER_PORT']='12355'
+    init_process_group(backend='nccl',rank=rank,world_size=world_size)
+
+
+torch.set_float32_matmul_precision('high')
+def main(rank,world_size,epoch):
+    try:
+        ddp_setup(rank,world_size)
+        DEVICE = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
+        # model = torch.compile(model)
+        tokenizer = Tokenizer(train_set)
+        train_data = DataShak(tokenizer,train_set,CONTEXT_SIZE)
+        train_loader = DataLoader(train_data,batch_size=BATCH_SIZE,collate_fn=collate_fn,shuffle=False,sampler=DistributedSampler(train_data))
+        loss_fn = torch.nn.CrossEntropyLoss().to(DEVICE)
+        model = GPT(tokenizer.vocab_size(),CONTEXT_SIZE,EMBED_DIM,EMBED_DIM,NUM_HEADS,NUM_LAYERS).to(DEVICE)
+        optim = torch.optim.Adam(model.parameters(),lr=LR)  # Instantiate optimizer with model parameters
+
+        model = DistributedDataParallel(model)
+        train(model,epoch,train_loader,optim,loss_fn,DEVICE)
+        gen = AutoRegressiveGenerator(tokenizer,model,CONTEXT_SIZE,DEVICE)
+        return gen.generate('As shall with either part',200,0.05)
+    finally:
+        destroy_process_group()
+
+if __name__ == '__main__':
+    mp.spawn(main,args=[WORLD_SIZE,1],nprocs=WORLD_SIZE)
