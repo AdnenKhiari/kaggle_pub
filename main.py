@@ -176,7 +176,6 @@ class GPT(torch.nn.Module):
         x = self.lm_head(x)
         return x
     
-WORLD_SIZE = torch.cuda.device_count()
 
 def train(model, epoch, train_loader,optim,loss_fn,device):
     model.train()
@@ -273,7 +272,7 @@ def main(rank,cfg):
 
 if __name__ == '__main__':
     config = {
-        "WORLD_SIZE": WORLD_SIZE,
+        "WORLD_SIZE": torch.cuda.device_count(),
         "CONTEXT_SIZE": 256,
         "EMBED_DIM": 256,
         "NUM_HEADS": 8,
