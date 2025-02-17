@@ -287,7 +287,7 @@ def main(rank, cfg):
             cfg["NUM_LAYERS"]
         ).to(DEVICE)
         
-        optim = torch.optim.Adam(model.parameters(), lr=cfg["LR"])  # Instantiate optimizer
+        optim = torch.optim.AdamW(model.parameters(), lr=cfg["LR"])  # Instantiate optimizer
 
         scheduler = CosineAnnealingWarmupRestarts(optim,
                                           first_cycle_steps=300,
