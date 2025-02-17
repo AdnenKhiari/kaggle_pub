@@ -259,6 +259,8 @@ def ddp_setup(rank,world_size):
 
 
 torch.set_float32_matmul_precision('high')
+
+from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 def main(rank, cfg):
     try:
         ddp_setup(rank, cfg["WORLD_SIZE"])
@@ -286,6 +288,14 @@ def main(rank, cfg):
         
         optim = torch.optim.Adam(model.parameters(), lr=cfg["LR"])  # Instantiate optimizer
 
+        scheduler = CosineAnnealingWarmupRestarts(optim,
+                                          first_cycle_steps=300,
+                                          cycle_mult=1.0,
+                                          max_lr=0.05,
+                                          min_lr=0.0005,
+                                          warmup_steps=70,
+                                          gamma=0.5)
+
         model = DistributedDataParallel(model)
         train(
             model,
@@ -293,7 +303,7 @@ def main(rank, cfg):
             cfg["WORKER_BATCH_SIZE"],
             cfg["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"],
             train_loader,
-            optim,
+            scheduler,
             loss_fn,
             DEVICE
         )
@@ -315,7 +325,7 @@ def parse_args():
     parser.add_argument("--num_epochs", type=int, default=1500, help="Total number of training epochs")
     parser.add_argument("--total_batch_size", type=int, default=2048, help="Total batch size across workers")
     parser.add_argument("--worker_batch_size", type=int, default=512, help="Batch size per worker")
-    parser.add_argument("--lr", type=float, default=0.002, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=0.005, help="Learning rate")
     return parser.parse_args()
 
 if __name__ == "__main__":
