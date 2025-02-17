@@ -292,7 +292,7 @@ def main(rank, cfg):
         scheduler = CosineAnnealingWarmupRestarts(optim,
                                           first_cycle_steps=300,
                                           cycle_mult=1.0,
-                                          max_lr=0.05,
+                                          max_lr=0.005,
                                           min_lr=0.0005,
                                           warmup_steps=70,
                                           gamma=0.5)
