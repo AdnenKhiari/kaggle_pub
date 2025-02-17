@@ -305,7 +305,7 @@ def parse_args():
     parser.add_argument("--epoch", type=int, default=2, help="Number of epochs per run")
     parser.add_argument("--num_epochs", type=int, default=1500, help="Total number of training epochs")
     parser.add_argument("--total_batch_size", type=int, default=2048, help="Total batch size across workers")
-    parser.add_argument("--worker_batch_size", type=int, default=256, help="Batch size per worker")
+    parser.add_argument("--worker_batch_size", type=int, default=1048, help="Batch size per worker")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     return parser.parse_args()
 
