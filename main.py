@@ -251,6 +251,7 @@ def ddp_setup(rank,world_size):
 
 torch.set_float32_matmul_precision('high')
 def main(rank,cfg):
+    print(cfg)
     try:
         ddp_setup(rank,cfg.WORLD_SIZE)
         DEVICE = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
