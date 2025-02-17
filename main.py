@@ -270,12 +270,6 @@ def main(rank,cfg):
         destroy_process_group()
 
 import argparse
-import torch
-import torch.multiprocessing as mp
-
-def main(rank, config):
-    print(f"Running main on rank {rank} with config: {config}")
-    # Your training logic here
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Distributed Training Configuration")
