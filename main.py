@@ -177,7 +177,7 @@ class GPT(torch.nn.Module):
         return x
     
 
-def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,loss_fn,device):
+def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,scheduler,loss_fn,device):
     model.train()
 
     grad_acc_steps = total_batch_size / mini_batch_size
@@ -210,6 +210,7 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,loss
                 torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
                 scaler.step(optim)
                 scaler.update()
+                scheduler.step()
                 optim.zero_grad()  # Clear previous gradients
 
 
@@ -303,6 +304,7 @@ def main(rank, cfg):
             cfg["WORKER_BATCH_SIZE"],
             cfg["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"],
             train_loader,
+            optim,
             scheduler,
             loss_fn,
             DEVICE
