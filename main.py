@@ -250,26 +250,50 @@ def ddp_setup(rank,world_size):
 
 
 torch.set_float32_matmul_precision('high')
-def main(rank,cfg):
-    print(cfg)
+def main(rank, cfg):
     try:
-        ddp_setup(rank,cfg.WORLD_SIZE)
+        ddp_setup(rank, cfg["WORLD_SIZE"])
         DEVICE = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
-        # model = torch.compile(model)
+        
         tokenizer = Tokenizer(train_set)
-        train_data = DataShak(tokenizer,train_set,cfg.CONTEXT_SIZE)
-        train_loader = DataLoader(train_data,batch_size=cfg.TOTAL_WORKERS_BATCH_SIZE,collate_fn=collate_fn,shuffle=False,sampler=DistributedSampler(train_data))
+        train_data = DataShak(tokenizer, train_set, cfg["CONTEXT_SIZE"])
+        train_loader = DataLoader(
+            train_data,
+            batch_size=cfg["TOTAL_WORKERS_BATCH_SIZE"],
+            collate_fn=collate_fn,
+            shuffle=False,
+            sampler=DistributedSampler(train_data)
+        )
         loss_fn = torch.nn.CrossEntropyLoss().to(DEVICE)
-        model = GPT(tokenizer.vocab_size(),cfg.CONTEXT_SIZE,cfg.EMBED_DIM,cfg.EMBED_DIM,cfg.NUM_HEADS,cfg.NUM_LAYERS).to(DEVICE)
-        optim = torch.optim.Adam(model.parameters(),lr=cfg.LR)  # Instantiate optimizer with model parameters
+        
+        model = GPT(
+            tokenizer.vocab_size(),
+            cfg["CONTEXT_SIZE"],
+            cfg["EMBED_DIM"],
+            cfg["EMBED_DIM"],
+            cfg["NUM_HEADS"],
+            cfg["NUM_LAYERS"]
+        ).to(DEVICE)
+        
+        optim = torch.optim.Adam(model.parameters(), lr=cfg["LR"])  # Instantiate optimizer
 
         model = DistributedDataParallel(model)
-        train(model,cfg.EPOCH,cfg.WORKER_BATCH_SIZE,cfg.WORKER_GRAD_ACCUMULATION_BATCH_SIZE,train_loader,optim,loss_fn,DEVICE)
-        gen = AutoRegressiveGenerator(tokenizer,model,cfg.CONTEXT_SIZE,DEVICE)
-        return gen.generate('As shall with either part',200,0.05)
+        train(
+            model,
+            cfg["EPOCH"],
+            cfg["WORKER_BATCH_SIZE"],
+            cfg["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"],
+            train_loader,
+            optim,
+            loss_fn,
+            DEVICE
+        )
+        
+        gen = AutoRegressiveGenerator(tokenizer, model, cfg["CONTEXT_SIZE"], DEVICE)
+        return gen.generate("As shall with either part", 200, 0.05)
+    
     finally:
         destroy_process_group()
-
 import argparse
 
 def parse_args():
