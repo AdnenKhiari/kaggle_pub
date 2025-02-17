@@ -177,10 +177,10 @@ class GPT(torch.nn.Module):
         return x
     
 
-def train(model, epoch, train_loader,optim,loss_fn,device):
+def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,loss_fn,device):
     model.train()
 
-    grad_acc_steps = GRAD_ACCUMULATION_BATCH_SIZE / BATCH_SIZE
+    grad_acc_steps = total_batch_size / mini_batch_size
     
     for e in range(epoch):
         start_time = time.perf_counter()
@@ -257,32 +257,62 @@ def main(rank,cfg):
         # model = torch.compile(model)
         tokenizer = Tokenizer(train_set)
         train_data = DataShak(tokenizer,train_set,cfg.CONTEXT_SIZE)
-        train_loader = DataLoader(train_data,batch_size=cfg.WORKER_BATCH_SIZE,collate_fn=collate_fn,shuffle=False,sampler=DistributedSampler(train_data))
+        train_loader = DataLoader(train_data,batch_size=cfg.TOTAL_WORKERS_BATCH_SIZE,collate_fn=collate_fn,shuffle=False,sampler=DistributedSampler(train_data))
         loss_fn = torch.nn.CrossEntropyLoss().to(DEVICE)
         model = GPT(tokenizer.vocab_size(),cfg.CONTEXT_SIZE,cfg.EMBED_DIM,cfg.EMBED_DIM,cfg.NUM_HEADS,cfg.NUM_LAYERS).to(DEVICE)
         optim = torch.optim.Adam(model.parameters(),lr=cfg.LR)  # Instantiate optimizer with model parameters
 
         model = DistributedDataParallel(model)
-        train(model,cfg.EPOCH,train_loader,optim,loss_fn,DEVICE)
+        train(model,cfg.EPOCH,cfg.WORKER_BATCH_SIZE,cfg.WORKER_GRAD_ACCUMULATION_BATCH_SIZE,train_loader,optim,loss_fn,DEVICE)
         gen = AutoRegressiveGenerator(tokenizer,model,cfg.CONTEXT_SIZE,DEVICE)
         return gen.generate('As shall with either part',200,0.05)
     finally:
         destroy_process_group()
 
+import argparse
+import torch
+import torch.multiprocessing as mp
 
-if __name__ == '__main__':
+def main(rank, config):
+    print(f"Running main on rank {rank} with config: {config}")
+    # Your training logic here
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Distributed Training Configuration")
+    parser.add_argument("--context_size", type=int, default=256, help="Context size")
+    parser.add_argument("--embed_dim", type=int, default=256, help="Embedding dimension")
+    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--num_layers", type=int, default=4, help="Number of transformer layers")
+    parser.add_argument("--epoch", type=int, default=2, help="Number of epochs per run")
+    parser.add_argument("--num_epochs", type=int, default=1500, help="Total number of training epochs")
+    parser.add_argument("--total_batch_size", type=int, default=2048, help="Total batch size across workers")
+    parser.add_argument("--worker_batch_size", type=int, default=256, help="Batch size per worker")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    args = parse_args()
+    
     config = {
         "WORLD_SIZE": torch.cuda.device_count(),
-        "CONTEXT_SIZE": 256,
-        "EMBED_DIM": 256,
-        "NUM_HEADS": 8,
-        "EPOCH": 2,
-        "NUM_LAYERS": 4,
-        "TOTAL_BATCH_SIZE": 2048,
-        "WORKER_BATCH_SIZE": 256,
-        "WORKER_GRAD_ACCUMULATION_BATCH_SIZE": 2048,
-        "NUM_EPOCHS": 1500,
-        "LR": 0.001
+        "CONTEXT_SIZE": args.context_size,
+        "EMBED_DIM": args.embed_dim,
+        "NUM_HEADS": args.num_heads,
+        "EPOCH": args.epoch,
+        "NUM_LAYERS": args.num_layers,
+        "TOTAL_BATCH_SIZE": args.total_batch_size,
+        "WORKER_BATCH_SIZE": args.worker_batch_size,
+        "TOTAL_WORKERS_BATCH_SIZE": args.worker_batch_size * args.world_size,
+        "NUM_EPOCHS": args.num_epochs,
+        "LR": args.lr
     }
-
-    mp.spawn(main,args=[config],nprocs=WORLD_SIZE)
+    
+    assert config["WORLD_SIZE"] > 0, "WORLD_SIZE must be greater than 0 (ensure GPUs are available)."
+    assert config["TOTAL_BATCH_SIZE"] % config["WORLD_SIZE"] == 0, "TOTAL_BATCH_SIZE must be divisible by WORLD_SIZE."
+    
+    config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] = config["TOTAL_BATCH_SIZE"] // config["WORLD_SIZE"]
+    
+    assert config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] > 0, "WORKER_GRAD_ACCUMULATION_BATCH_SIZE must be positive."
+    assert config["WORKER_BATCH_SIZE"] <= config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"], "WORKER_BATCH_SIZE must not exceed WORKER_GRAD_ACCUMULATION_BATCH_SIZE."
+    
+    mp.spawn(main, args=(config,), nprocs=config["WORLD_SIZE"])
