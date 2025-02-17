@@ -181,7 +181,8 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,loss
     model.train()
 
     grad_acc_steps = total_batch_size / mini_batch_size
-    
+    scaler = torch.amp.GradScaler()
+
     for e in range(epoch):
         start_time = time.perf_counter()
 
@@ -198,15 +199,20 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,loss
                 token_th = token_th + train_x.size(0) * train_x.size(1)
 
                 loss = loss / grad_acc_steps 
+                
             
             # All Reduce
-            loss.backward()
+            scaler.scale(loss).backward()
 
             # Gradient Accumulation
             if (batch_idx) % grad_acc_steps == 0:
+                scaler.unscale_(optim)
                 torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
-                optim.step()
+                scaler.step(optim)
+                scaler.update()
                 optim.zero_grad()  # Clear previous gradients
+
+
             # if batch_idx % 10 == 0:
             #     print(f"Batch {batch_idx + 1}/{len(train_loader)} - Loss: {loss.item():.4f}")
     
@@ -293,7 +299,7 @@ def main(rank, cfg):
         )
         
         gen = AutoRegressiveGenerator(tokenizer, model, cfg["CONTEXT_SIZE"], DEVICE)
-        return gen.generate("As shall with either part", 200, 0.05)
+        print(gen.generate("As shall with either part", 200, 0.05))
     
     finally:
         destroy_process_group()
