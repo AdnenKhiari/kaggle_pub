@@ -302,7 +302,7 @@ if __name__ == "__main__":
         "NUM_LAYERS": args.num_layers,
         "TOTAL_BATCH_SIZE": args.total_batch_size,
         "WORKER_BATCH_SIZE": args.worker_batch_size,
-        "TOTAL_WORKERS_BATCH_SIZE": args.worker_batch_size * args.world_size,
+        "TOTAL_WORKERS_BATCH_SIZE": args.worker_batch_size * torch.cuda.device_count(),
         "NUM_EPOCHS": args.num_epochs,
         "LR": args.lr
     }
