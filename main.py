@@ -292,12 +292,12 @@ def main(rank, cfg):
         optim = torch.optim.AdamW(model.parameters(), lr=cfg["MIN_LR"])  # Instantiate optimizer
 
         scheduler = CosineAnnealingWarmupRestarts(optim,
-                                          first_cycle_steps=5000,
-                                          cycle_mult=0.1,
+                                          first_cycle_steps=cfg['CYCLE_STEPS'],
+                                          cycle_mult=cfg['CYCLE_MULT'],
                                           max_lr=cfg["MAX_LR"],
                                           min_lr=cfg["MIN_LR"],
-                                          warmup_steps=1000,
-                                          gamma=0.1)
+                                          warmup_steps=cfg['WARMUP_STEPS'],
+                                          gamma=cfg['GAMMA'])
 
         model = DistributedDataParallel(model)
         train(
@@ -329,8 +329,12 @@ def parse_args():
     parser.add_argument("--num_epochs", type=int, default=1500, help="Total number of training epochs")
     parser.add_argument("--total_batch_size", type=int, default=2048, help="Total batch size across workers")
     parser.add_argument("--worker_batch_size", type=int, default=512, help="Batch size per worker")
-    parser.add_argument("--max_lr", type=float, default=0.005, help="Learning rate")
-    parser.add_argument("--min_lr", type=float, default=0.0001, help="Learning rate")
+    parser.add_argument("--max_lr", type=float, default=0.005, help="Max Learning rate")
+    parser.add_argument("--min_lr", type=float, default=0.0001, help="Min Learning rate")
+    parser.add_argument("--gamma", type=float, default=0.05, help="Reduction of max lr of scheduler")
+    parser.add_argument("--warmup_steps", type=float, default=2000, help="No of warmup steps")
+    parser.add_argument("--cycle_steps", type=float, default=8000, help="No of steps per cycle")
+    parser.add_argument("--cycle_mult", type=float, default=0.2, help="cycle annealing duration")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -349,6 +353,10 @@ if __name__ == "__main__":
         "NUM_EPOCHS": args.num_epochs,
         "MAX_LR": args.max_lr,
         "MIN_LR": args.min_lr,
+        "GAMMA": args.gamma,
+        "WARMUP_STEPS": args.warmup_steps,
+        "CYCLE_STEPS": args.cycle_steps,
+        "CYCLE_MULT": args.cycle_mult,
     }
     config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] = config["TOTAL_BATCH_SIZE"] // config["WORLD_SIZE"]
     print(config)
