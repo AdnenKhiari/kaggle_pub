@@ -292,12 +292,12 @@ def main(rank, cfg):
         optim = torch.optim.AdamW(model.parameters(), lr=cfg["MIN_LR"])  # Instantiate optimizer
 
         scheduler = CosineAnnealingWarmupRestarts(optim,
-                                          first_cycle_steps=300,
-                                          cycle_mult=2.0,
+                                          first_cycle_steps=5000,
+                                          cycle_mult=0.1,
                                           max_lr=cfg["MAX_LR"],
                                           min_lr=cfg["MIN_LR"],
-                                          warmup_steps=100,
-                                          gamma=0.25)
+                                          warmup_steps=1000,
+                                          gamma=0.1)
 
         model = DistributedDataParallel(model)
         train(
