@@ -176,11 +176,27 @@ class GPT(torch.nn.Module):
         x = self.lm_head(x)
         return x
     
-
-def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,scheduler,loss_fn,device):
+# check vid if i need to divide loss to fix gradients sum
+# only executed by worker 0
+def validate(model,val_loader,loss_fn,device):
+    model.eval()
+    total_loss = 0
+    with torch.no_grad():
+        for batch_idx, (train_x, train_y) in enumerate(val_loader):
+            with torch.amp.autocast(device_type='cuda',dtype=torch.float16):
+                train_x = train_x.to(device)  # (B,T)
+                train_y = train_y.to(device)  # (B,T)
+        
+                pred_x = model(train_x)  # (B,T,VOCAB_SIZE)
+                loss = loss_fn(pred_x.view(-1, pred_x.size(-1)), train_y.view(-1))   # Flatten for CE loss
+                total_loss += loss.item() 
+     
+        return total_loss / len(val_loader) 
+            
+def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader,optim,scheduler,loss_fn,device):
     model.train()
 
-    print(f"{len(train_loader.dataset) / total_batch_size} Steps in an epoch")
+    print(f"{len(train_loader) / total_batch_size} Steps in an epoch")
 
     grad_acc_steps = total_batch_size / mini_batch_size
     scaler = torch.amp.GradScaler()
@@ -224,8 +240,10 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,sche
         end_time = time.perf_counter()
         execution_time = end_time - start_time
 
+        avg_val_loss = validate(model,val_loader,loss_fn,device)
+
         token_th = token_th / execution_time
-        print(f"{device} Epoch {e} completed. Average Loss: {avg_loss:.4f} | Execution Time: {execution_time: .5f} s | Tokens Throughput : {token_th: .5f} t/s")
+        print(f"{device} Epoch {e} completed. Average Loss: {avg_loss:.4f} | Average Validation Loss: {avg_val_loss:.4f} |  Execution Time: {execution_time: .5f} s | Tokens Throughput : {token_th: .5f} t/s")
 
 
 class AutoRegressiveGenerator():
@@ -244,7 +262,8 @@ class AutoRegressiveGenerator():
                 x = x[:,-self.context_size:]
                 next_token_distribution =  torch.nn.functional.softmax(self.model(x)[:,-1,:] / temperature,-1)
                 # next_token = next_token_distribution.argmax(1).view(-1,1) # (B,1)
-                next_token = torch.multinomial(torch.topk(next_token_distribution,top_k,dim=1).values,1)
+                # next_token = torch.multinomial(torch.topk(next_token_distribution,top_k,dim=1).values,1)
+                next_token = torch.multinomial(next_token_distribution,1)
                 x = torch.cat((x,next_token),1) # (B,T+1)
                 result = torch.cat((result,next_token),1) # (B,T+1)
             return self.tokenizer.decode(result.tolist()[0])
@@ -271,12 +290,19 @@ def main(rank, cfg):
         
         tokenizer = Tokenizer(train_set)
         train_data = DataShak(tokenizer, train_set, cfg["CONTEXT_SIZE"])
+        val_data = DataShak(tokenizer, valid_set, cfg["CONTEXT_SIZE"])
         train_loader = DataLoader(
             train_data,
             batch_size=cfg["TOTAL_WORKERS_BATCH_SIZE"],
             collate_fn=collate_fn,
             shuffle=False,
             sampler=DistributedSampler(train_data)
+        )
+        val_loader =  DataLoader(
+            val_data,
+            batch_size=cfg["WORKER_BATCH_SIZE"],
+            collate_fn=collate_fn,
+            shuffle=False
         )
         loss_fn = torch.nn.CrossEntropyLoss().to(DEVICE)
         
@@ -306,6 +332,7 @@ def main(rank, cfg):
             cfg["WORKER_BATCH_SIZE"],
             cfg["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"],
             train_loader,
+            val_loader,
             optim,
             scheduler,
             loss_fn,
