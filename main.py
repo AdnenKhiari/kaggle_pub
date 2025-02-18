@@ -180,6 +180,8 @@ class GPT(torch.nn.Module):
 def train(model, epoch,mini_batch_size,total_batch_size, train_loader,optim,scheduler,loss_fn,device):
     model.train()
 
+    print(f"{len(train_loader.dataset) / total_batch_size} Steps in an epoch")
+
     grad_acc_steps = total_batch_size / mini_batch_size
     scaler = torch.amp.GradScaler()
 
@@ -287,13 +289,13 @@ def main(rank, cfg):
             cfg["NUM_LAYERS"]
         ).to(DEVICE)
         
-        optim = torch.optim.AdamW(model.parameters(), lr=cfg["LR"])  # Instantiate optimizer
+        optim = torch.optim.AdamW(model.parameters(), lr=cfg["MIN_LR"])  # Instantiate optimizer
 
         scheduler = CosineAnnealingWarmupRestarts(optim,
                                           first_cycle_steps=300,
                                           cycle_mult=2.0,
-                                          max_lr=0.001,
-                                          min_lr=0.0001,
+                                          max_lr=cfg["MAX_LR"],
+                                          min_lr=cfg["MIN_LR"],
                                           warmup_steps=100,
                                           gamma=0.25)
 
@@ -327,7 +329,8 @@ def parse_args():
     parser.add_argument("--num_epochs", type=int, default=1500, help="Total number of training epochs")
     parser.add_argument("--total_batch_size", type=int, default=2048, help="Total batch size across workers")
     parser.add_argument("--worker_batch_size", type=int, default=512, help="Batch size per worker")
-    parser.add_argument("--lr", type=float, default=0.005, help="Learning rate")
+    parser.add_argument("--max-lr", type=float, default=0.005, help="Learning rate")
+    parser.add_argument("--min-lr", type=float, default=0.0001, help="Learning rate")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -344,7 +347,8 @@ if __name__ == "__main__":
         "WORKER_BATCH_SIZE": args.worker_batch_size,
         "TOTAL_WORKERS_BATCH_SIZE": args.worker_batch_size * torch.cuda.device_count(),
         "NUM_EPOCHS": args.num_epochs,
-        "LR": args.lr
+        "MAX_LR": args.max_lr,
+        "MIN_LR": args.min_lr,
     }
     config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] = config["TOTAL_BATCH_SIZE"] // config["WORLD_SIZE"]
     print(config)
