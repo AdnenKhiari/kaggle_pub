@@ -329,8 +329,8 @@ def parse_args():
     parser.add_argument("--num_epochs", type=int, default=1500, help="Total number of training epochs")
     parser.add_argument("--total_batch_size", type=int, default=2048, help="Total batch size across workers")
     parser.add_argument("--worker_batch_size", type=int, default=512, help="Batch size per worker")
-    parser.add_argument("--max-lr", type=float, default=0.005, help="Learning rate")
-    parser.add_argument("--min-lr", type=float, default=0.0001, help="Learning rate")
+    parser.add_argument("--max_lr", type=float, default=0.005, help="Learning rate")
+    parser.add_argument("--min_lr", type=float, default=0.0001, help="Learning rate")
     return parser.parse_args()
 
 if __name__ == "__main__":
