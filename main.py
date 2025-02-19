@@ -222,6 +222,7 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
         total_loss = 0
         token_th = 0
         for batch_idx, (train_x, train_y) in enumerate(train_loader):
+            print(batch_idx)
             with torch.amp.autocast(device_type='cuda',dtype=torch.float16):
                 train_x = train_x.to(device)  # (B,T)
                 train_y = train_y.to(device)  # (B,T)
