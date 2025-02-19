@@ -175,8 +175,8 @@ class GPT(torch.nn.Module):
                 torch.nn.init.zeros_(module.bias)
             if hasattr(module,'FIX_INIT'):
                 module.weight.data *= (2/self.n_layers)**0.5
-        # elif isinstance(module, torch.nn.Embedding):
-            # torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)  # Standard practice for embeddings
+        elif isinstance(module, torch.nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self,x):
         x = self.transformer.wte(x)
@@ -320,7 +320,7 @@ def main(rank, cfg):
             shuffle=False
         )
         loss_fn = torch.nn.CrossEntropyLoss().to(DEVICE)
-        
+        print("Vocab Size",tokenizer.vocab_size())
         model = GPT(
             tokenizer.vocab_size(),
             cfg["CONTEXT_SIZE"],
