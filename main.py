@@ -211,7 +211,7 @@ def validate(model,val_loader,loss_fn,device):
 def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader,optim,scheduler,loss_fn,device):
     model.train()
 
-    print(f"{len(train_loader) / total_batch_size} Steps in an epoch")
+    print(len(train_loader),total_batch_size,f"{len(train_loader) / total_batch_size} Steps in an epoch")
 
     grad_acc_steps = total_batch_size / mini_batch_size
     scaler = torch.amp.GradScaler()
@@ -247,19 +247,17 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
                 scaler.update()
                 scheduler.step()
                 optim.zero_grad()  # Clear previous gradients
-
-
-            # if batch_idx % 10 == 0:
-            #     print(f"Batch {batch_idx + 1}/{len(train_loader)} - Loss: {loss.item():.4f}")
     
+        # Compute Statistics
         avg_loss = total_loss / len(train_loader)
         torch.cuda.synchronize()
         end_time = time.perf_counter()
         execution_time = end_time - start_time
+        token_th = token_th / execution_time
 
+        # Get Val Loss
         avg_val_loss = validate(model,val_loader,loss_fn,device)
 
-        token_th = token_th / execution_time
         print(f"{device} Epoch {e} completed. Average Loss: {avg_loss:.4f} | Average Validation Loss: {avg_val_loss:.4f} |  Execution Time: {execution_time: .5f} s | Tokens Throughput : {token_th: .5f} t/s")
 
 
