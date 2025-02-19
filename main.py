@@ -362,7 +362,7 @@ def prepare_data():
     train_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/train.csv').loc[0,'text']
     valid_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/validation.csv').loc[0,'text']
     test_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/test.csv').loc[0,'text']
-
+    valid_set = valid_set + test_set
     tokenizer = Tokenizer(train_set)
     print("Vocab Size",tokenizer.vocab_size())
 
