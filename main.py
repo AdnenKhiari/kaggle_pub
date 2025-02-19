@@ -40,6 +40,7 @@ class DataShak(Dataset):
     def __init__(self,tokenizer,text,context_size):
         self.text = tokenizer.encode(text)
         self.context_size = context_size
+        print('DataSet Contains',len(self.text),"Tokens",len(self.text) // self.context_size,"Sequences")
     def __len__(self):
         return len(self.text) // self.context_size
     def __getitem__(self,idx):
