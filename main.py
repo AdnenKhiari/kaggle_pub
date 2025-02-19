@@ -414,12 +414,12 @@ if __name__ == "__main__":
     }
     config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] = config["TOTAL_BATCH_SIZE"] // config["WORLD_SIZE"]
     print(config)
+
     assert config["WORLD_SIZE"] > 0, "WORLD_SIZE must be greater than 0 (ensure GPUs are available)."
     assert config["TOTAL_BATCH_SIZE"] % config["WORLD_SIZE"] == 0, "TOTAL_BATCH_SIZE must be divisible by WORLD_SIZE."
     
-    
     assert config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] > 0, "WORKER_GRAD_ACCUMULATION_BATCH_SIZE must be positive."
-    assert config["WORKER_BATCH_SIZE"] <= config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"], "WORKER_BATCH_SIZE must not exceed WORKER_GRAD_ACCUMULATION_BATCH_SIZE."
+    assert config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] % config["WORKER_BATCH_SIZE"] == 0, "WORKER_BATCH_SIZE must not exceed WORKER_GRAD_ACCUMULATION_BATCH_SIZE and should divise it ."
     
     #Prepare Data
     tokenizer,train_data,val_data = prepare_data()
