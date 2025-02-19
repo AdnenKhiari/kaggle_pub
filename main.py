@@ -330,7 +330,7 @@ def main(rank, cfg):
             cfg["NUM_LAYERS"]
         ).to(DEVICE)
         
-        optim = torch.optim.AdamW(model.parameters(), lr=cfg["MIN_LR"])  # Instantiate optimizer
+        optim = torch.optim.AdamW(model.parameters(), lr=cfg["MIN_LR"],weight_decay=cfg["WEIGHT_DECAY"])  # Instantiate optimizer
 
         scheduler = CosineAnnealingWarmupRestarts(optim,
                                           first_cycle_steps=cfg['CYCLE_STEPS'],
@@ -377,6 +377,7 @@ def parse_args():
     parser.add_argument("--warmup_steps", type=float, default=2000, help="No of warmup steps")
     parser.add_argument("--cycle_steps", type=float, default=8000, help="No of steps per cycle")
     parser.add_argument("--cycle_mult", type=float, default=0.2, help="cycle annealing duration")
+    parser.add_argument("--weight_decay", type=float, default=0.08, help="Weight Decay of AdamW")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -399,6 +400,7 @@ if __name__ == "__main__":
         "WARMUP_STEPS": args.warmup_steps,
         "CYCLE_STEPS": args.cycle_steps,
         "CYCLE_MULT": args.cycle_mult,
+        "WEIGHT_DECAY": args.weight_decay,
     }
     config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] = config["TOTAL_BATCH_SIZE"] // config["WORLD_SIZE"]
     print(config)
