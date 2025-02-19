@@ -128,6 +128,7 @@ class GPTMLP(torch.nn.Module):
         self.fc = torch.nn.Linear(embed_dim,4*embed_dim)
         self.actv = torch.nn.GELU()
         self.proj = torch.nn.Linear(4*embed_dim,embed_dim)
+        self.proj.FIX_INIT = 1
     def forward(self,x):
         x = self.actv(self.fc(self.ln_1(x)))
         x = self.proj(x)
@@ -139,16 +140,18 @@ class TransformerBlock(torch.nn.Module):
         self.ln_1 = torch.nn.LayerNorm(embed_dim)
         self.attn = MultiHeadedCausalSelfFlashAttention(embed_dim,head_dim,num_heads)
         self.proj = torch.nn.Linear(head_dim,embed_dim)
+        self.proj.FIX_INIT = 1
+
         self.mlp = GPTMLP(embed_dim)
     def forward(self,x):
         x = x + self.proj(self.attn(self.ln_1(x)))
         x = x + self.mlp(x)
         return x
     
-
 class GPT(torch.nn.Module):
     def __init__(self,vocab_size,context_size,embed_dim,head_dim,n_heads,n_layers):
         super().__init__()
+        self.n_layers = n_layers
 
         self.transformer = torch.nn.ModuleDict(dict(
             wte = torch.nn.Embedding(vocab_size,embed_dim),
@@ -161,8 +164,20 @@ class GPT(torch.nn.Module):
 
         self.lm_head = torch.nn.Linear(embed_dim,vocab_size)
         self.register_buffer('wpe_sequence',torch.arange(0,context_size))
-
         self.lm_head.weight = self.transformer.wte.weight
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self,module):
+        if isinstance(module, torch.nn.Linear):
+            torch.nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+            if hasattr(module,'FIX_INIT'):
+                module.weight.data *= (2/self.n_layers)**0.5
+        # elif isinstance(module, torch.nn.Embedding):
+            # torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)  # Standard practice for embeddings
+
     def forward(self,x):
         x = self.transformer.wte(x)
         x = x + self.transformer.wpe(self.wpe_sequence[:x.size(1)])
