@@ -208,9 +208,9 @@ def validate(model,val_loader,loss_fn,device):
 def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader,optim,scheduler,loss_fn,device):
     model.train()
 
-    print(f"{len(train_loader.dataset) / total_batch_size} Steps in an epoch")
-
     grad_acc_steps = total_batch_size / mini_batch_size
+    print(f"{len(train_loader) / grad_acc_steps} Steps in an epoch")
+
     scaler = torch.amp.GradScaler()
 
     for e in range(epoch):
