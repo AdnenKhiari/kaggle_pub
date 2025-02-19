@@ -238,7 +238,7 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
 
             # Only Reduce Gradients before Optimizer Step
             model.require_backward_grad_sync  = is_update_step
-            grad_norm = sum([ p.grad.detach().data.norm(2)**2 for p in model.module.parameters() ])**0.5
+            grad_norm = sum([ p.grad.detach().data.norm(2)**2 for p in model.module.parameters() if p.grad is not None and p.requires_grad ])**0.5
 
             # Scale Grad and accumulate ( Optionally reduce if last iteration to optimize comm )
             scaler.scale(loss).backward()
