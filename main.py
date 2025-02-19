@@ -6,10 +6,6 @@ import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 import time
 
-train_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/train.csv').loc[0,'text']
-valid_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/validation.csv').loc[0,'text']
-test_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/test.csv').loc[0,'text']
-
 class Tokenizer:
     def __init__(self,text):
         self.vocab = list(set(self.tokenize(text)))
@@ -300,7 +296,7 @@ def ddp_setup(rank,world_size):
 torch.set_float32_matmul_precision('high')
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
-def main(rank, cfg,train_data,val_data):
+def main(rank, cfg,train_data,val_data,tokenizer):
     try:
         ddp_setup(rank, cfg["WORLD_SIZE"])
         DEVICE = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
@@ -360,6 +356,19 @@ def main(rank, cfg,train_data,val_data):
         destroy_process_group()
 import argparse
 
+
+def prepare_data():
+
+    train_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/train.csv').loc[0,'text']
+    valid_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/validation.csv').loc[0,'text']
+    test_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/test.csv').loc[0,'text']
+
+    tokenizer = Tokenizer(train_set)
+    train_data = DataShak(tokenizer, train_set, config["CONTEXT_SIZE"])
+    val_data = DataShak(tokenizer, valid_set, config["CONTEXT_SIZE"])
+    return tokenizer,train_data,val_data
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Distributed Training Configuration")
     parser.add_argument("--context_size", type=int, default=256, help="Context size")
@@ -411,9 +420,6 @@ if __name__ == "__main__":
     assert config["WORKER_BATCH_SIZE"] <= config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"], "WORKER_BATCH_SIZE must not exceed WORKER_GRAD_ACCUMULATION_BATCH_SIZE."
     
     #Prepare Data
+    tokenizer,train_data,val_data = prepare_data()
 
-    tokenizer = Tokenizer(train_set)
-    train_data = DataShak(tokenizer, train_set, config["CONTEXT_SIZE"])
-    val_data = DataShak(tokenizer, valid_set, config["CONTEXT_SIZE"])
-
-    mp.spawn(main, args=(config,train_data,val_data), nprocs=config["WORLD_SIZE"])
+    mp.spawn(main, args=(config,train_data,val_data,tokenizer), nprocs=config["WORLD_SIZE"])
