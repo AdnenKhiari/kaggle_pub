@@ -241,8 +241,8 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
                 # scaler.unscale_(optim)
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
-                scaler.step(optim)
-                scaler.update()
+                # scaler.step(optim)
+                # scaler.update()
 
                 scheduler.step()
                 optim.zero_grad()  # Clear previous gradients
