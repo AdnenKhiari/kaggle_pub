@@ -201,7 +201,7 @@ def validate(model,val_loader,loss_fn,device):
         
                 pred_x = model(train_x)  # (B,T,VOCAB_SIZE)
                 loss = loss_fn(pred_x.view(-1, pred_x.size(-1)), train_y.view(-1))   # Flatten for CE loss
-                total_loss += loss.item() 
+            total_loss += loss.item() 
      
         return total_loss / len(val_loader) 
 
@@ -234,10 +234,18 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
             # Fix Grad Acc Averaging
             loss = loss / grad_acc_steps 
 
-            # All Reduce
+            is_update_step = (batch_idx+1) % grad_acc_steps == 0 or (batch_idx+1 == len(train_loader))
+
+            # Only Reduce Gradients before Optimizer Step
+            model.require_backward_grad_sync  = is_update_step
+            grad_norm = sum([ p.grad.detach().data.norm(2)**2 for p in model.module.parameters() ])**0.5
+
+            # Scale Grad and accumulate ( Optionally reduce if last iteration to optimize comm )
             scaler.scale(loss).backward()
-            # Gradient Accumulation
-            if ((batch_idx+1) % grad_acc_steps   == 0) or (batch_idx+1 == len(train_loader)):
+            print(is_update_step,device,grad_norm)
+
+            # Optimizer Step
+            if is_update_step:
                 scaler.unscale_(optim)
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
