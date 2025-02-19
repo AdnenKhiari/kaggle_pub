@@ -228,11 +228,13 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
         
                 pred_x = model(train_x)  # (B,T,VOCAB_SIZE)
                 loss = loss_fn(pred_x.view(-1, pred_x.size(-1)), train_y.view(-1))   # Flatten for CE loss
-                total_loss += loss.item() 
-                token_th = token_th + train_x.size(0) * train_x.size(1)
-
+                # Fix Grad Acc Averaging
                 loss = loss / grad_acc_steps 
-                
+
+                # Report Statistics
+                with torch.no_grad():
+                    total_loss += loss.item() 
+                    token_th = token_th + train_x.size(0) * train_x.size(1)
             
             # All Reduce
             scaler.scale(loss).backward()
@@ -330,7 +332,7 @@ def main(rank, cfg):
             cfg["NUM_LAYERS"]
         ).to(DEVICE)
         
-        optim = torch.optim.AdamW(model.parameters(), lr=cfg["MIN_LR"],weight_decay=cfg["WEIGHT_DECAY"])  # Instantiate optimizer
+        optim = torch.optim.AdamW(model.parameters(), lr=cfg["MIN_LR"],weight_decay=cfg["WEIGHT_DECAY"],fused=True)  # Instantiate optimizer
 
         scheduler = CosineAnnealingWarmupRestarts(optim,
                                           first_cycle_steps=cfg['CYCLE_STEPS'],
