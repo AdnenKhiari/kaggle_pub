@@ -209,7 +209,7 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
     model.train()
 
     grad_acc_steps = total_batch_size / mini_batch_size
-    print(f"{np.ceil(len(train_loader) / grad_acc_steps)} Steps in an epoch")
+    print(f"{np.ceil(len(train_loader) / grad_acc_steps)} Steps in an epoch , Accumulating {grad_acc_steps} Gradients Per Step ")
 
     scaler = torch.amp.GradScaler()
 
