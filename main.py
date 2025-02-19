@@ -204,12 +204,12 @@ def validate(model,val_loader,loss_fn,device):
                 total_loss += loss.item() 
      
         return total_loss / len(val_loader) 
-            
+
 def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader,optim,scheduler,loss_fn,device):
     model.train()
 
     grad_acc_steps = total_batch_size / mini_batch_size
-    print(f"{len(train_loader) / grad_acc_steps} Steps in an epoch")
+    print(f"{np.ceil(len(train_loader) / grad_acc_steps)} Steps in an epoch")
 
     scaler = torch.amp.GradScaler()
 
