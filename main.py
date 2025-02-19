@@ -303,7 +303,7 @@ def main(rank, cfg,train_data,val_data,tokenizer):
         
         train_loader = DataLoader(
             train_data,
-            batch_size=cfg["TOTAL_WORKERS_BATCH_SIZE"],
+            batch_size=cfg["WORKER_BATCH_SIZE"],
             collate_fn=collate_fn,
             shuffle=False,
             sampler=DistributedSampler(train_data)
@@ -315,7 +315,6 @@ def main(rank, cfg,train_data,val_data,tokenizer):
             shuffle=False
         )
         loss_fn = torch.nn.CrossEntropyLoss().to(DEVICE)
-        print("Vocab Size",tokenizer.vocab_size())
         model = GPT(
             tokenizer.vocab_size(),
             cfg["CONTEXT_SIZE"],
@@ -364,6 +363,8 @@ def prepare_data():
     test_set = pd.read_csv('/kaggle/input/the-bards-best-a-character-modeling-dataset/test.csv').loc[0,'text']
 
     tokenizer = Tokenizer(train_set)
+    print("Vocab Size",tokenizer.vocab_size())
+
     train_data = DataShak(tokenizer, train_set, config["CONTEXT_SIZE"])
     val_data = DataShak(tokenizer, valid_set, config["CONTEXT_SIZE"])
     return tokenizer,train_data,val_data
