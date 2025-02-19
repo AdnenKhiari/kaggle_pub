@@ -219,6 +219,13 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
         total_loss = 0
         token_th = 0
         for batch_idx, (train_x, train_y) in enumerate(train_loader):
+
+            is_update_step = (batch_idx+1) % grad_acc_steps == 0 or (batch_idx+1 == len(train_loader))
+
+            # Only Reduce Gradients before Optimizer Step ( should be before forward pass)
+            model.require_backward_grad_sync  = is_update_step
+
+            # Forward Pass
             with torch.amp.autocast(device_type='cuda',dtype=torch.float16):
                 train_x = train_x.to(device)  # (B,T)
                 train_y = train_y.to(device)  # (B,T)
@@ -234,10 +241,6 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
             # Fix Grad Acc Averaging
             loss = loss / grad_acc_steps 
 
-            is_update_step = (batch_idx+1) % grad_acc_steps == 0 or (batch_idx+1 == len(train_loader))
-
-            # Only Reduce Gradients before Optimizer Step
-            model.require_backward_grad_sync  = is_update_step
 
             # Scale Grad and accumulate ( Optionally reduce if last iteration to optimize comm )
             scaler.scale(loss).backward()
