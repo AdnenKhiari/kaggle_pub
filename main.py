@@ -219,7 +219,7 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
         total_loss = 0
         token_th = 0
         for batch_idx, (train_x, train_y) in enumerate(train_loader):
-            print({device},batch_idx,train_x.shape)
+            print(device,batch_idx,train_x.shape)
             with torch.amp.autocast(device_type='cuda',dtype=torch.float16):
                 train_x = train_x.to(device)  # (B,T)
                 train_y = train_y.to(device)  # (B,T)
@@ -239,7 +239,7 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
 
             # Gradient Accumulation
             if (batch_idx+1) % grad_acc_steps == 0:
-                print("GRAD UPDATE")
+                print(device,"GRAD UPDATE")
                 scaler.unscale_(optim)
                 torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
                 scaler.step(optim)
