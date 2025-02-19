@@ -222,10 +222,10 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
 
             is_update_step = (batch_idx+1) % grad_acc_steps == 0 or (batch_idx+1 == len(train_loader))
 
-            # Only Reduce Gradients before Optimizer Step ( should be before forward pass)
+            # Only Reduce Gradients before Optimizer Step ( should be before forward pass )
             model.require_backward_grad_sync  = is_update_step
 
-            # Forward Pass
+            # Forward Pass With Mixed Precision
             with torch.amp.autocast(device_type='cuda',dtype=torch.float16):
                 train_x = train_x.to(device)  # (B,T)
                 train_y = train_y.to(device)  # (B,T)
@@ -244,19 +244,24 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
 
             # Scale Grad and accumulate ( Optionally reduce if last iteration to optimize comm )
             scaler.scale(loss).backward()
-            grad_norm = sum([ p.grad.detach().data.norm(2)**2 for p in model.module.parameters() if p.grad is not None and p.requires_grad ])**0.5
 
-            print(is_update_step,device,grad_norm)
+            # grad_norm = sum([ p.grad.detach().data.norm(2)**2 for p in model.module.parameters() if p.grad is not None and p.requires_grad ])**0.5
+            # print(is_update_step,device,grad_norm)
 
             # Optimizer Step
             if is_update_step:
+
+                # Unscale Before Clip Norm
                 scaler.unscale_(optim)
-
                 torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
-                scaler.step(optim)
-                scaler.update()
 
+                # Optimizer Step
+                scaler.step(optim)
+
+                # Update Other Variables
+                scaler.update()
                 scheduler.step()
+
                 optim.zero_grad()  # Clear previous gradients
     
         # Compute Statistics
