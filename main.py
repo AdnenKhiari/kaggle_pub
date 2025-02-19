@@ -300,14 +300,11 @@ def ddp_setup(rank,world_size):
 torch.set_float32_matmul_precision('high')
 
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
-def main(rank, cfg):
+def main(rank, cfg,train_data,val_data):
     try:
         ddp_setup(rank, cfg["WORLD_SIZE"])
         DEVICE = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
         
-        tokenizer = Tokenizer(train_set)
-        train_data = DataShak(tokenizer, train_set, cfg["CONTEXT_SIZE"])
-        val_data = DataShak(tokenizer, valid_set, cfg["CONTEXT_SIZE"])
         train_loader = DataLoader(
             train_data,
             batch_size=cfg["TOTAL_WORKERS_BATCH_SIZE"],
@@ -413,4 +410,10 @@ if __name__ == "__main__":
     assert config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"] > 0, "WORKER_GRAD_ACCUMULATION_BATCH_SIZE must be positive."
     assert config["WORKER_BATCH_SIZE"] <= config["WORKER_GRAD_ACCUMULATION_BATCH_SIZE"], "WORKER_BATCH_SIZE must not exceed WORKER_GRAD_ACCUMULATION_BATCH_SIZE."
     
-    mp.spawn(main, args=(config,), nprocs=config["WORLD_SIZE"])
+    #Prepare Data
+
+    tokenizer = Tokenizer(train_set)
+    train_data = DataShak(tokenizer, train_set, cfg["CONTEXT_SIZE"])
+    val_data = DataShak(tokenizer, valid_set, cfg["CONTEXT_SIZE"])
+
+    mp.spawn(main, args=(config,train_data,val_data), nprocs=config["WORLD_SIZE"])
