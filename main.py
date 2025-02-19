@@ -238,7 +238,7 @@ def train(model, epoch,mini_batch_size,total_batch_size, train_loader,val_loader
 
             # Gradient Accumulation
             if ((batch_idx+1) % grad_acc_steps   == 0) or (batch_idx+1 == len(train_loader)):
-                # print(device,"GRAD UPDATE")
+                print(device,"GRAD UPDATE")
                 scaler.unscale_(optim)
                 torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
                 scaler.step(optim)
