@@ -413,7 +413,7 @@ if __name__ == "__main__":
     #Prepare Data
 
     tokenizer = Tokenizer(train_set)
-    train_data = DataShak(tokenizer, train_set, cfg["CONTEXT_SIZE"])
-    val_data = DataShak(tokenizer, valid_set, cfg["CONTEXT_SIZE"])
+    train_data = DataShak(tokenizer, train_set, config["CONTEXT_SIZE"])
+    val_data = DataShak(tokenizer, valid_set, config["CONTEXT_SIZE"])
 
     mp.spawn(main, args=(config,train_data,val_data), nprocs=config["WORLD_SIZE"])
